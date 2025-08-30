@@ -1,5 +1,8 @@
 use clap::ValueEnum;
-use std::io::{Read, Write};
+use std::{
+    io::{Read, Write},
+    sync::{Arc, Mutex},
+};
 
 #[cfg(feature = "flate2")]
 pub use flate2;
@@ -89,6 +92,7 @@ pub struct Flate2Compressor {
     threads: usize,
     compression: flate2::Compression,
     input_buffers: Vec<Vec<u8>>,
+    thread_pool: rayon::ThreadPool,
 }
 
 #[cfg(feature = "flate2")]
@@ -98,6 +102,10 @@ impl Flate2Compressor {
             threads,
             compression,
             input_buffers: Vec::new(),
+            thread_pool: rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap(),
         }
     }
 }
@@ -171,31 +179,43 @@ impl<R: Read> Compressor<R> for Flate2Compressor {
             }
         }
 
-        let mut thread_handles = Vec::new();
-        thread_handles.reserve_exact(chunks_with_data);
-
-        for i in 0..chunks_with_data {
-            let input_data = self.input_buffers[i].clone();
-            let compression = self.compression;
-
-            thread_handles.push(std::thread::spawn(move || {
-                let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), compression);
-                encoder.write_all(&input_data)?;
-                encoder.finish()
-            }));
-        }
-
         let mut results = Vec::new();
         results.reserve_exact(chunks_with_data);
+        let results = Arc::new(Mutex::new(Some(results)));
 
-        for handle in thread_handles {
-            let output = handle
-                .join()
-                .map_err(|_| std::io::Error::other("Thread panicked"))??;
-            results.push(output);
-        }
+        self.thread_pool.in_place_scope(|scope| {
+            let error = Arc::new(Mutex::new(None));
 
-        Ok(results)
+            for i in 0..chunks_with_data {
+                let input_data = &self.input_buffers[i];
+                let compression = self.compression;
+                let results = Arc::clone(&results);
+                let error = Arc::clone(&error);
+
+                scope.spawn(move |_| {
+                    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), compression);
+                    if let Err(err) = encoder.write_all(input_data) {
+                        *error.lock().unwrap() = Some(err);
+                        return;
+                    }
+
+                    match encoder.finish() {
+                        Ok(result) => results.lock().unwrap().as_mut().unwrap().push(result),
+                        Err(err) => {
+                            *error.lock().unwrap() = Some(err);
+                        }
+                    }
+                });
+            }
+
+            if let Some(err) = error.lock().unwrap().take() {
+                return Err(err);
+            }
+
+            Ok(())
+        })?;
+
+        Ok(results.lock().unwrap().take().unwrap())
     }
 }
 

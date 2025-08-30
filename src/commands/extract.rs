@@ -2,7 +2,7 @@ use ataf::compression::Decompressor;
 use clap::ArgMatches;
 use std::{
     io::{BufReader, IsTerminal, Read},
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::{Duration, SystemTime},
 };
 
@@ -53,7 +53,14 @@ pub fn run(matches: &ArgMatches) -> i32 {
                     *entry.header().size
                 );
 
-                let destination = output.join(&entry.header().path);
+                let mut path = Path::new(&entry.header().path);
+                if path.is_absolute() {
+                    let mut components = path.components();
+                    components.next();
+
+                    path = components.as_path();
+                }
+                let destination = output.join(path);
 
                 if let Some(parent) = destination.parent()
                     && !parent.exists()
