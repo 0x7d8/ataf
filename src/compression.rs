@@ -46,7 +46,12 @@ pub trait Compressor<R: Read> {
 pub trait Decompressor {
     fn decompress_inputs(&mut self) -> usize;
 
-    fn decompress(&mut self, inputs: Vec<Vec<u8>>, output: &mut Vec<u8>) -> std::io::Result<()>;
+    fn decompress(
+        &mut self,
+        inputs: Vec<Vec<u8>>,
+        output: &mut Vec<u8>,
+        chunk_size: u32,
+    ) -> std::io::Result<()>;
 }
 
 pub struct NoCompressor {
@@ -226,7 +231,12 @@ impl Decompressor for NoDecompressor {
         1
     }
 
-    fn decompress(&mut self, inputs: Vec<Vec<u8>>, output: &mut Vec<u8>) -> std::io::Result<()> {
+    fn decompress(
+        &mut self,
+        inputs: Vec<Vec<u8>>,
+        output: &mut Vec<u8>,
+        _chunk_size: u32,
+    ) -> std::io::Result<()> {
         for input in inputs {
             std::io::copy(&mut input.as_slice(), output)?;
         }
@@ -238,12 +248,21 @@ impl Decompressor for NoDecompressor {
 #[cfg(feature = "flate2")]
 pub struct Flate2Decompressor {
     threads: usize,
+    thread_pool: rayon::ThreadPool,
+    chunk_buffers: Vec<Arc<Mutex<Vec<u8>>>>,
 }
 
 #[cfg(feature = "flate2")]
 impl Flate2Decompressor {
     pub fn new(threads: usize) -> Self {
-        Self { threads }
+        Self {
+            threads,
+            thread_pool: rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap(),
+            chunk_buffers: Vec::new(),
+        }
     }
 }
 
@@ -257,23 +276,45 @@ impl Decompressor for Flate2Decompressor {
         &mut self,
         inputs: Vec<Vec<u8>>,
         archive_output: &mut Vec<u8>,
+        chunk_size: u32,
     ) -> std::io::Result<()> {
-        let mut outputs = Vec::new();
-        outputs.reserve_exact(inputs.len());
-
-        for input in inputs {
-            outputs.push(std::thread::spawn(move || {
-                let mut decoder = flate2::read::ZlibDecoder::new(&input[..]);
-                let mut buffer = Vec::new();
-                decoder.read_to_end(&mut buffer).map(|_| buffer)
-            }));
+        if self.chunk_buffers.len() < inputs.len() {
+            self.chunk_buffers.resize_with(inputs.len(), || {
+                Arc::new(Mutex::new(vec![0; chunk_size as usize]))
+            });
         }
 
-        for output in outputs {
-            let output = output
-                .join()
-                .map_err(|_| std::io::Error::other("Thread panicked"))??;
-            archive_output.extend(output);
+        let inputs_len = inputs.len();
+
+        self.thread_pool.in_place_scope(|scope| {
+            let error = Arc::new(Mutex::new(None));
+
+            for (input, chunk_buffer) in inputs.into_iter().zip(self.chunk_buffers.iter().cloned())
+            {
+                let error = Arc::clone(&error);
+
+                scope.spawn(move |_| {
+                    let mut decoder = flate2::read::ZlibDecoder::new(&input[..]);
+                    let mut chunk_buffer = chunk_buffer.lock().unwrap();
+
+                    match decoder.read_to_end(&mut chunk_buffer) {
+                        Ok(n) => chunk_buffer.truncate(n),
+                        Err(err) => {
+                            *error.lock().unwrap() = Some(err);
+                        }
+                    }
+                });
+            }
+
+            if let Some(err) = error.lock().unwrap().take() {
+                return Err(err);
+            }
+
+            Ok(())
+        })?;
+
+        for chunk_buffer in self.chunk_buffers.iter().take(inputs_len) {
+            archive_output.write_all(&chunk_buffer.lock().unwrap())?;
         }
 
         Ok(())

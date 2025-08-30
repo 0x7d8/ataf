@@ -2,7 +2,7 @@ use crate::{
     compression::Decompressor,
     spec::{ArchiveEntryHeader, ArchiveHeader, Deserialize, VariableSizedU32},
 };
-use std::io::{Read, Seek};
+use std::io::Read;
 
 pub struct Archive<R: Read> {
     reader: R,
@@ -99,19 +99,6 @@ impl<'a, R: Read> ArchiveEntry<'a, R> {
     }
 }
 
-impl<'a, R: Read + Seek> ArchiveEntry<'a, R> {
-    pub fn finish_seek(mut self) -> std::io::Result<()> {
-        if self.read_bytes < *self.header.size {
-            let to_skip = *self.header.size - self.read_bytes;
-            self.read_bytes = *self.header.size;
-
-            self.reader.seek_relative(to_skip as i64)?;
-        }
-
-        Ok(())
-    }
-}
-
 impl<'a, R: Read> Read for ArchiveEntry<'a, R> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         if *self.header.size == 0 || self.read_bytes >= *self.header.size {
@@ -155,8 +142,11 @@ impl<'a, R: Read> Read for ArchiveEntry<'a, R> {
                 chunk_buffers.push(chunk_buffer);
             }
 
-            self.decompressor
-                .decompress(chunk_buffers, &mut self.compression_chunk_buffer)?;
+            self.decompressor.decompress(
+                chunk_buffers,
+                &mut self.compression_chunk_buffer,
+                self.compression_chunk_size,
+            )?;
 
             self.read(buf)
         }
