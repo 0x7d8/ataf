@@ -5,8 +5,8 @@ use ataf::{
 use clap::ArgMatches;
 use std::{
     io::{BufWriter, IsTerminal},
-    os::unix::fs::{MetadataExt, PermissionsExt},
     path::PathBuf,
+    time::SystemTime,
 };
 
 macro_rules! println_if_terminal {
@@ -72,6 +72,37 @@ pub fn run(matches: &ArgMatches) -> i32 {
             }
         };
 
+        #[cfg(target_family = "unix")]
+        let mode = {
+            use std::os::unix::fs::PermissionsExt;
+
+            metadata.permissions().mode()
+        };
+        #[cfg(target_family = "windows")]
+        let mode = if metadata.permissions().readonly() {
+            0o444
+        } else {
+            0o666
+        };
+
+        #[cfg(target_family = "unix")]
+        let uid = {
+            use std::os::unix::fs::MetadataExt;
+
+            metadata.uid()
+        };
+        #[cfg(target_family = "windows")]
+        let uid = 0;
+
+        #[cfg(target_family = "unix")]
+        let gid = {
+            use std::os::unix::fs::MetadataExt;
+
+            metadata.gid()
+        };
+        #[cfg(target_family = "windows")]
+        let gid = 0;
+
         if metadata.is_file() {
             let file = match std::fs::File::open(input) {
                 Ok(file) => file,
@@ -84,21 +115,35 @@ pub fn run(matches: &ArgMatches) -> i32 {
             let entry = ataf::spec::ArchiveEntryHeader {
                 r#type: ataf::spec::ArchiveEntryHeaderType::File,
                 path: input.to_string_lossy().to_string(),
-                mode: metadata.permissions().mode(),
-                uid: VariableSizedU32::new(metadata.uid()),
-                gid: VariableSizedU32::new(metadata.gid()),
-                mtime: VariableSizedU64::new(metadata.mtime() as u64),
-                size: VariableSizedU64::new(metadata.size() as u64),
+                mode,
+                uid: VariableSizedU32::new(uid),
+                gid: VariableSizedU32::new(gid),
+                mtime: VariableSizedU64::new(
+                    metadata
+                        .modified()
+                        .unwrap_or_else(|_| SystemTime::now())
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                ),
+                size: VariableSizedU64::new(metadata.len() as u64),
             };
             archive.write_entry(entry, Box::new(file)).unwrap();
         } else if metadata.is_dir() {
             let entry = ataf::spec::ArchiveEntryHeader {
                 r#type: ataf::spec::ArchiveEntryHeaderType::Directory,
                 path: input.to_string_lossy().to_string(),
-                mode: metadata.permissions().mode(),
-                uid: VariableSizedU32::new(metadata.uid()),
-                gid: VariableSizedU32::new(metadata.gid()),
-                mtime: VariableSizedU64::new(metadata.mtime() as u64),
+                mode,
+                uid: VariableSizedU32::new(uid),
+                gid: VariableSizedU32::new(gid),
+                mtime: VariableSizedU64::new(
+                    metadata
+                        .modified()
+                        .unwrap_or_else(|_| SystemTime::now())
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                ),
                 size: VariableSizedU64::new(0),
             };
             archive
@@ -148,10 +193,17 @@ pub fn run(matches: &ArgMatches) -> i32 {
                     ataf::spec::ArchiveEntryHeaderType::SymlinkFile
                 },
                 path: input.to_string_lossy().to_string(),
-                mode: metadata.permissions().mode(),
-                uid: VariableSizedU32::new(metadata.uid()),
-                gid: VariableSizedU32::new(metadata.gid()),
-                mtime: VariableSizedU64::new(metadata.mtime() as u64),
+                mode,
+                uid: VariableSizedU32::new(uid),
+                gid: VariableSizedU32::new(gid),
+                mtime: VariableSizedU64::new(
+                    metadata
+                        .modified()
+                        .unwrap_or_else(|_| SystemTime::now())
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                ),
                 size: VariableSizedU64::new(symlink_target.to_string_lossy().len() as u64),
             };
             archive
