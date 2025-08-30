@@ -126,7 +126,7 @@ pub fn run(matches: &ArgMatches) -> i32 {
                         .unwrap()
                         .as_secs(),
                 ),
-                size: VariableSizedU64::new(metadata.len() as u64),
+                size: VariableSizedU64::new(metadata.len()),
             };
             archive.write_entry(entry, Box::new(file)).unwrap();
         } else if metadata.is_dir() {
