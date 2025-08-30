@@ -3,6 +3,7 @@ name = "ataf"
 description = "An archive format that supports native multithreading for compression and decompression."
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 homepage = "https://github.com/0x7d8/ataf"
 repository = "https://github.com/0x7d8/ataf.git"
 categories = ["command-line-utilities", "compression"]
