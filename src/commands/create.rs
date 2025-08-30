@@ -5,7 +5,7 @@ use ataf::{
 use clap::ArgMatches;
 use std::{
     io::{BufWriter, IsTerminal},
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::SystemTime,
 };
 
@@ -57,6 +57,7 @@ pub fn run(matches: &ArgMatches) -> i32 {
             Box<dyn std::io::Read>,
         >,
         input: &PathBuf,
+        root: &Path,
     ) {
         println_if_terminal!("adding {} to archive...", input.display());
 
@@ -103,6 +104,12 @@ pub fn run(matches: &ArgMatches) -> i32 {
         #[cfg(target_family = "windows")]
         let gid = 0;
 
+        let path = input
+            .strip_prefix(root)
+            .unwrap_or(input)
+            .to_string_lossy()
+            .to_string();
+
         if metadata.is_file() {
             let file = match std::fs::File::open(input) {
                 Ok(file) => file,
@@ -114,7 +121,7 @@ pub fn run(matches: &ArgMatches) -> i32 {
 
             let entry = ataf::spec::ArchiveEntryHeader {
                 r#type: ataf::spec::ArchiveEntryHeaderType::File,
-                path: input.to_string_lossy().to_string(),
+                path,
                 mode,
                 uid: VariableSizedU32::new(uid),
                 gid: VariableSizedU32::new(gid),
@@ -132,7 +139,7 @@ pub fn run(matches: &ArgMatches) -> i32 {
         } else if metadata.is_dir() {
             let entry = ataf::spec::ArchiveEntryHeader {
                 r#type: ataf::spec::ArchiveEntryHeaderType::Directory,
-                path: input.to_string_lossy().to_string(),
+                path,
                 mode,
                 uid: VariableSizedU32::new(uid),
                 gid: VariableSizedU32::new(gid),
@@ -175,7 +182,7 @@ pub fn run(matches: &ArgMatches) -> i32 {
                     }
                 };
 
-                add_to_archive(archive, &entry.path());
+                add_to_archive(archive, &entry.path(), root);
             }
         } else if metadata.is_symlink() {
             let symlink_target = match std::fs::read_link(input) {
@@ -192,7 +199,7 @@ pub fn run(matches: &ArgMatches) -> i32 {
                 } else {
                     ataf::spec::ArchiveEntryHeaderType::SymlinkFile
                 },
-                path: input.to_string_lossy().to_string(),
+                path,
                 mode,
                 uid: VariableSizedU32::new(uid),
                 gid: VariableSizedU32::new(gid),
@@ -218,7 +225,15 @@ pub fn run(matches: &ArgMatches) -> i32 {
     }
 
     for input in inputs {
-        add_to_archive(&mut archive, input);
+        add_to_archive(
+            &mut archive,
+            input,
+            if std::fs::metadata(input).is_ok_and(|m| m.is_dir()) {
+                input
+            } else {
+                Path::new("")
+            },
+        );
     }
 
     0

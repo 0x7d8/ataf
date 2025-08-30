@@ -8,7 +8,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn cli() -> Command {
     Command::new("ataf")
-        .about("ataf is an archive format with native multithreading support")
+        .about("An archive format that supports native multithreading for compression and decompression.")
         .subcommand_required(true)
         .arg_required_else_help(true)
         .allow_external_subcommands(true)
