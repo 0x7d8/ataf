@@ -1,7 +1,6 @@
 use ataf::compression::Decompressor;
 use clap::ArgMatches;
 use std::{
-    fs::Permissions,
     io::{BufReader, IsTerminal, Read},
     path::PathBuf,
     time::{Duration, SystemTime},
@@ -96,7 +95,9 @@ pub fn run(matches: &ArgMatches) -> i32 {
                             use std::os::unix::fs::PermissionsExt;
 
                             writer
-                                .set_permissions(Permissions::from_mode(entry.header().mode))
+                                .set_permissions(std::fs::Permissions::from_mode(
+                                    entry.header().mode,
+                                ))
                                 .unwrap();
                         }
                     }
@@ -178,10 +179,9 @@ pub fn run(matches: &ArgMatches) -> i32 {
                         }
                         #[cfg(target_family = "windows")]
                         {
-                            if let Err(err) = std::os::windows::fs::symlink_directory(
-                                symlink_target,
-                                &destination,
-                            ) {
+                            if let Err(err) =
+                                std::os::windows::fs::symlink_dir(symlink_target, &destination)
+                            {
                                 eprintln!(
                                     "ERROR error creating symlink {}: {}",
                                     destination.display(),

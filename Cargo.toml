@@ -11,3 +11,14 @@ flate2 = { version = "1.1.2", optional = true }
 default = ["flate2"]
 
 flate2 = ["dep:flate2"]
+
+[profile.release.package."*"]
+opt-level = "s"
+codegen-units = 1
+strip = "symbols"
+
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
