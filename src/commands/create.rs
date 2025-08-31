@@ -31,16 +31,26 @@ pub fn run(matches: &ArgMatches) -> i32 {
     println_if_terminal!("number of threads: {}", threads);
     println_if_terminal!("chunk size: {}", chunk_size);
 
-    let compressor: Box<dyn Compressor<Box<dyn std::io::Read>>> = match compression_format {
+    type DynCompressor =
+        dyn Compressor<BufWriter<Box<dyn std::io::Write + Send>>, Box<dyn std::io::Read>>;
+
+    let compressor: Box<DynCompressor> = match compression_format {
         CompressionFormat::None => Box::new(ataf::compression::NoCompressor::new()),
         #[cfg(feature = "flate2")]
         CompressionFormat::Flate2 => Box::new(ataf::compression::Flate2Compressor::new(
             *threads,
-            flate2::Compression::default(),
+            flate2::Compression::best(),
         )),
+        #[cfg(feature = "brotli")]
+        CompressionFormat::Brotli => Box::new(ataf::compression::BrotliCompressor::new(
+            *threads,
+            brotli::enc::BrotliEncoderParams::default(),
+        )),
+        #[cfg(feature = "lz4")]
+        CompressionFormat::Lz4 => Box::new(ataf::compression::Lz4Compressor::new(*threads, 17)),
     };
 
-    let writer: Box<dyn std::io::Write> = match output {
+    let writer: Box<dyn std::io::Write + Send> = match output {
         Some(path) => Box::new(std::fs::File::create(path).unwrap()),
         None => Box::new(std::io::stdout()),
     };
@@ -53,7 +63,7 @@ pub fn run(matches: &ArgMatches) -> i32 {
 
     fn add_to_archive(
         archive: &mut ataf::archive::write::ArchiveWriter<
-            BufWriter<Box<dyn std::io::Write>>,
+            BufWriter<Box<dyn std::io::Write + Send>>,
             Box<dyn std::io::Read>,
         >,
         input: &PathBuf,

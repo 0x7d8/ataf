@@ -1,7 +1,7 @@
 [package]
 name = "ataf"
 description = "An archive format that supports native multithreading for compression and decompression."
-version = "0.1.3"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 homepage = "https://github.com/0x7d8/ataf"
@@ -10,13 +10,17 @@ categories = ["command-line-utilities", "compression"]
 
 [dependencies]
 clap = "4.5.37"
-flate2 = { version = "1.1.2", optional = true }
 rayon = "1.11.0"
+flate2 = { version = "1.1.2", optional = true }
+brotli = { version = "8.0.2", optional = true }
+lz4 = { version = "1.28.1", optional = true }
 
 [features]
-default = ["flate2"]
+default = ["flate2", "brotli", "lz4"]
 
 flate2 = ["dep:flate2"]
+brotli = ["dep:brotli"]
+lz4 = ["dep:lz4"]
 
 [profile.release.package."*"]
 opt-level = "s"

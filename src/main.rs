@@ -43,7 +43,7 @@ fn cli() -> Command {
                         .long("chunk-size")
                         .num_args(1)
                         .default_value("65535")
-                        .value_parser(clap::value_parser!(u32).range(1024..))
+                        .value_parser(clap::value_parser!(u32).range(1024..16777216))
                         .required(false),
                 )
                 .arg(

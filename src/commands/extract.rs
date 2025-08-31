@@ -33,6 +33,10 @@ pub fn run(matches: &ArgMatches) -> i32 {
         "none" => Box::new(ataf::compression::NoDecompressor),
         #[cfg(feature = "flate2")]
         "flate2" => Box::new(ataf::compression::Flate2Decompressor::new(*threads)),
+        #[cfg(feature = "brotli")]
+        "brotli" => Box::new(ataf::compression::BrotliDecompressor::new(*threads)),
+        #[cfg(feature = "lz4")]
+        "lz4" => Box::new(ataf::compression::Lz4Decompressor::new(*threads)),
         _ => {
             eprintln!(
                 "ERROR unsupported compression format: {}",

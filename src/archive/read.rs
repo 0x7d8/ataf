@@ -1,8 +1,12 @@
 use crate::{
     compression::Decompressor,
-    spec::{ArchiveEntryHeader, ArchiveHeader, Deserialize, VariableSizedU32},
+    spec::{ArchiveEntryHeader, ArchiveHeader, Deserialize},
 };
 use std::io::Read;
+
+fn u24_bytes_to_u32(bytes: [u8; 3]) -> u32 {
+    ((bytes[0] as u32) << 16) | ((bytes[1] as u32) << 8) | (bytes[2] as u32)
+}
 
 pub struct Archive<R: Read> {
     reader: R,
@@ -133,8 +137,11 @@ impl<'a, R: Read> Read for ArchiveEntry<'a, R> {
                     break;
                 }
 
-                let raw_chunk_size = VariableSizedU32::deserialize(&mut self.reader)?;
-                let mut chunk_buffer = vec![0; *raw_chunk_size as usize];
+                let mut raw_chunk_size_bytes = [0; 3];
+                self.reader.read_exact(&mut raw_chunk_size_bytes)?;
+                let raw_chunk_size = u24_bytes_to_u32(raw_chunk_size_bytes);
+
+                let mut chunk_buffer = vec![0; raw_chunk_size as usize];
                 self.reader.read_exact(&mut chunk_buffer)?;
 
                 self.read_chunks += 1;
