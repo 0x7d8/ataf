@@ -751,7 +751,7 @@ impl Lz4Decompressor {
     }
 }
 
-#[cfg(feature = "flate2")]
+#[cfg(feature = "lz4")]
 impl Decompressor for Lz4Decompressor {
     fn decompress_inputs(&mut self) -> usize {
         self.threads

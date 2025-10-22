@@ -4,7 +4,7 @@ use ataf::{
 };
 use clap::ArgMatches;
 use std::{
-    io::{BufWriter, IsTerminal},
+    io::{BufWriter, IsTerminal, Write},
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -13,6 +13,8 @@ macro_rules! println_if_terminal {
     ($fmt:expr $(, $args:expr)* $(,)?) => {
         if std::io::stdout().is_terminal() {
             println!($fmt $(, $args)*);
+        } else {
+            writeln!(std::io::stderr(), $fmt $(, $args)*).ok();
         }
     };
 }

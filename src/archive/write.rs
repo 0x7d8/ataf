@@ -61,7 +61,7 @@ impl<W: Write + Send, R: Read> ArchiveWriter<W, R> {
         entry.serialize(&mut self.writer)?;
 
         let chunk_count = *entry.size / self.header.compression_chunk_size as u64
-            + if *entry.size % self.header.compression_chunk_size as u64 > 0 {
+            + if !(*entry.size).is_multiple_of(self.header.compression_chunk_size as u64) {
                 1
             } else {
                 0
